@@ -1,7 +1,9 @@
+import { v4 as uuidv4 } from "uuid";
+
 export const products = {
   resources: [
     {
-      id: 1,
+      id: uuidv4(),
       name: 'MacBook Pro 16"',
       category: "Laptopy",
       description: "Laptop Apple z procesorem M1 Pro, 16GB RAM, 512GB SSD",
@@ -13,7 +15,7 @@ export const products = {
       createdAt: "2023-01-15T14:30:00Z",
     },
     {
-      id: 2,
+      id: uuidv4(),
       name: "iPhone 14 Pro",
       category: "Smartfony",
       description: "Smartfon Apple z procesorem A16 Bionic, 128GB pamięci",
@@ -25,7 +27,7 @@ export const products = {
       createdAt: "2023-02-20T09:00:00Z",
     },
     {
-      id: 3,
+      id: uuidv4(),
       name: "Samsung Galaxy S23",
       category: "Smartfony",
       description:
@@ -38,7 +40,7 @@ export const products = {
       createdAt: "2023-03-10T11:45:00Z",
     },
     {
-      id: 4,
+      id: uuidv4(),
       name: "Dell XPS 15",
       category: "Laptopy",
       description:
