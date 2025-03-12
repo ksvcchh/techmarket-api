@@ -1,13 +1,34 @@
 import { NextFunction, Request, Response } from "express";
 
 export function middlewareForError(
-  err: Error,
-  _req: Request,
+  err: any,
+  req: Request,
   res: Response,
   next: NextFunction,
 ) {
   console.error(err.stack);
-  res.status(500).send("Internal Server Error");
+  if (err.code) {
+    if (err.code === "23505") {
+      res.status(409).json({
+        message: "Duplicate value error.",
+        detail: err.detail,
+      });
+    } else if (err.code === "23503") {
+      res.status(400).json({
+        message: "Foreign key constraint violation.",
+        detail: err.detail,
+      });
+    } else if (err.code === "23502") {
+      res.status(400).json({
+        message: "Null value error; a required field is missing.",
+        detail: err.detail,
+      });
+    } else {
+      res.status(500).send(`Error: ${err}`);
+    }
+  } else {
+    res.status(500).send("Internal Server Error");
+  }
 }
 
 // import { Request, Response, NextFunction } from "express";

@@ -1,53 +1,98 @@
-import { Request, Response } from "express";
-import { products } from "../data/products";
-import { v4 as uuidv4 } from "uuid";
+import { NextFunction, Request, Response } from "express";
+import {
+  Product,
+  createProduct,
+  getAllProducts,
+  getProductById,
+  updateProductPartly,
+  deleteProduct,
+  searchProducts,
+} from "../models/productModel";
 
-export function getAllProductsController(_req: Request, res: Response) {
-  const allProducts = products.resources;
-  res.status(200).json(allProducts);
+export async function getAllProductsController(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { sortByPrice, isavailable } = req.query;
+
+    if (sortByPrice || isavailable !== undefined) {
+      let available: boolean | undefined;
+      if (isavailable !== undefined) {
+        if (isavailable == "true") available = true;
+        else if (isavailable == "false") available = false;
+      }
+
+      const products = await searchProducts({
+        sortByPrice: sortByPrice as "asc" | "desc" | undefined,
+        isavailable: available,
+      });
+
+      res.status(200).json(products);
+    } else {
+      const allProducts = await getAllProducts();
+      res.status(200).json(allProducts);
+    }
+  } catch (error) {
+    next(error);
+  }
 }
 
-export function getProductByIdController(req: Request, res: Response) {
-  const { productId } = req.params;
-
-  const allProducts = products.resources;
-  const product = allProducts.find((elem) => elem.id === productId);
-  product
-    ? res.status(200).json(product)
-    : res
-        .status(404)
-        .json({ message: "Product of the given Id was not found! " });
+export async function getProductByIdController(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { productId } = req.params;
+    const result = await getProductById(productId);
+    result
+      ? res.status(200).json(result)
+      : res
+          .status(404)
+          .json({ message: "Product of the given Id was not found! " });
+  } catch (error) {
+    next(error);
+  }
 }
 
-export function createProductController(req: Request, res: Response) {
-  const {
-    name,
-    category,
-    description,
-    price,
-    stockCount,
-    brand,
-    imageUrl,
-    isAvailable,
-    createdAt,
-  } = req.body;
+export async function createProductController(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const {
+      name,
+      category,
+      description,
+      price,
+      stockCount,
+      brand,
+      imageUrl,
+      isAvailable,
+    } = req.body;
 
-  const allProducts = products.resources;
+    const newProduct: Omit<Product, "id" | "createdAt"> = {
+      name,
+      category,
+      description,
+      price: parseFloat(price),
+      stockCount: parseInt(stockCount),
+      brand,
+      imageUrl,
+      isAvailable: isAvailable === "true",
+    };
 
-  allProducts.push({
-    id: uuidv4(),
-    name: name,
-    category: category,
-    description: description,
-    price: parseFloat(parseFloat(price).toFixed(2)),
-    stockCount: parseInt(stockCount),
-    brand: brand,
-    imageUrl: imageUrl,
-    isAvailable: isAvailable === "true",
-    createdAt: createdAt,
-  });
+    const result = await createProduct(newProduct);
 
-  res.status(201).json({ message: "Product succesfully created!" });
+    res
+      .status(201)
+      .json({ message: "Product created succesfully!", data: result });
+  } catch (error) {
+    next(error);
+  }
 }
 
 /* EXAMPLE POST BODY
@@ -66,23 +111,79 @@ export function createProductController(req: Request, res: Response) {
 
 */
 
-export function partlyChangeProductController(req: Request, res: Response) {
-  const { productId } = req.params;
-  const newInfo = req.body;
+// export function partlyChangeProductController(req: Request, res: Response) {
+//   const { productId } = req.params;
+//   const newInfo = req.body;
 
-  const allProducts = products.resources;
-  const indexOfProduct = allProducts.map((elem) => elem.id).indexOf(productId);
+//   const allProducts = products.resources;
+//   const indexOfProduct = allProducts.map((elem) => elem.id).indexOf(productId);
 
-  if (indexOfProduct === -1) {
-    res
-      .status(404)
-      .json({ message: "Product of the given Id was not found! " });
-  } else {
-    allProducts[indexOfProduct] = {
-      ...allProducts[indexOfProduct],
-      ...newInfo,
-    };
-    res.status(200).json({ message: "Product succesfully changed!" });
+//   if (indexOfProduct === -1) {
+//     res
+//       .status(404)
+//       .json({ message: "Product of the given Id was not found! " });
+//   } else {
+//     allProducts[indexOfProduct] = {
+//       ...allProducts[indexOfProduct],
+//       ...newInfo,
+//     };
+//     res.status(200).json({ message: "Product succesfully changed!" });
+//   }
+// }
+
+export async function partlyChangeProductController(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { productId } = req.params;
+
+    const allowedFields: (keyof Omit<Product, "id" | "createdAt">)[] = [
+      "name",
+      "category",
+      "description",
+      "price",
+      "stockCount",
+      "brand",
+      "imageUrl",
+      "isAvailable",
+    ];
+
+    const updateFields: Partial<Omit<Product, "id" | "createdAt">> = {};
+
+    allowedFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        if (field === "price") {
+          updateFields.price = parseFloat(req.body.price);
+        } else if (field === "stockCount") {
+          updateFields.stockCount = parseInt(req.body.stockCount);
+        } else if (field === "isAvailable") {
+          updateFields.isAvailable = req.body.isAvailable == "true";
+        } else {
+          updateFields[field] = req.body[field];
+        }
+      }
+    });
+
+    if (Object.keys(updateFields).length === 0) {
+      res.status(400).json({ message: "No valid fields provided for update." });
+    } else {
+      const updatedProduct = await updateProductPartly(productId, updateFields);
+
+      if (!updatedProduct) {
+        res
+          .status(404)
+          .json({ message: "Product of the given Id was not found!" });
+      } else {
+        res.status(200).json({
+          message: "Product successfully updated!",
+          data: updatedProduct,
+        });
+      }
+    }
+  } catch (error) {
+    next(error);
   }
 }
 
@@ -101,17 +202,26 @@ export function partlyChangeProductController(req: Request, res: Response) {
 
 */
 
-export function deleteProductController(req: Request, res: Response) {
-  const { productId } = req.params;
-  const allProducts = products.resources;
-  const indexOfProduct = allProducts.map((elem) => elem.id).indexOf(productId);
+export async function deleteProductController(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { productId } = req.params;
+    const deletedProduct = await deleteProduct(productId);
 
-  if (indexOfProduct === -1) {
-    res
-      .status(404)
-      .json({ message: "Product of the given Id was not found! " });
-  } else {
-    allProducts.splice(indexOfProduct, 1);
-    res.status(200).json({ message: "Product succesfully deleted!" });
+    if (!deletedProduct) {
+      res
+        .status(404)
+        .json({ message: "Product of the given Id was not found!" });
+    } else {
+      res.status(200).json({
+        message: "Product successfully deleted!",
+        data: deletedProduct,
+      });
+    }
+  } catch (error) {
+    next(error);
   }
 }
