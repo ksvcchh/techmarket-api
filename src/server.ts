@@ -2,10 +2,13 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
+
 import productsRouter from "./routes/product.route";
 import categoriesRouter from "./routes/category.route";
 import reviewsRouter from "./routes/review.route";
 import usersRouter from "./routes/user.route";
+import shoppingCartRouter from "./routes/shoppingCart.route";
+
 import { middlewareForError } from "./middleware/errorHandler";
 
 const app = express();
@@ -18,6 +21,7 @@ app.use("/products", productsRouter);
 app.use("/categories", categoriesRouter);
 app.use("/reviews", reviewsRouter);
 app.use("/users", usersRouter);
+app.use("/shopping-cart", shoppingCartRouter);
 
 app.use(middlewareForError);
 

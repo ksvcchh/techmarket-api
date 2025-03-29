@@ -6,7 +6,7 @@ export function middlewareForError(
     res: Response,
     _next: NextFunction,
 ) {
-    console.error(err.stack);
+    // console.error(err.stack);
 
     if (
         err.message &&

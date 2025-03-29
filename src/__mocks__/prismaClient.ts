@@ -31,6 +31,18 @@ const mockPrisma = {
         update: jest.fn(),
         delete: jest.fn(),
     },
+    shoppingCart: {
+        findUnique: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+        delete: jest.fn(),
+    },
+    productsInShoppingCart: {
+        findUnique: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+        delete: jest.fn(),
+    },
 };
 
 export default mockPrisma;
