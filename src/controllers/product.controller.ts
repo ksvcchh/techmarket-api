@@ -66,7 +66,7 @@ export async function createProductController(
     try {
         const {
             name,
-            categoryId,
+            category,
             description,
             price,
             stockCount,
@@ -77,7 +77,7 @@ export async function createProductController(
 
         const newProduct: Omit<Product, "id" | "createdAt"> = {
             name,
-            categoryId,
+            category,
             description,
             price: parseFloat(price),
             stockCount: parseInt(stockCount),
@@ -107,7 +107,7 @@ export async function partlyChangeProductController(
 
         const allowedFields: (keyof Omit<Product, "id" | "created_at">)[] = [
             "name",
-            "categoryId",
+            "category",
             "description",
             "price",
             "stockCount",

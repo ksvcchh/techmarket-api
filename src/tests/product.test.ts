@@ -1,139 +1,237 @@
-jest.mock("../config/prismaClient", () => require("../__mocks__/prismaClient"));
+jest.mock("../services/database.service");
 import request from "supertest";
 import app from "../server";
-import mockPrisma from "../__mocks__/prismaClient";
+import { collections } from "../services/database.service";
+import { ObjectId } from "mongodb";
 
-describe("Product Routes", () => {
+describe("Product Routes - Using Mock DB", () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
 
-    describe("GET /products", () => {
-        test("should return an array of products", async () => {
-            mockPrisma.product.findMany.mockResolvedValueOnce([
-                { id: 1, name: "Mock Prod 1", price: 100 },
-                { id: 2, name: "Mock Prod 2", price: 200 },
-            ]);
+    describe("GET /products (no query)", () => {
+        it("should return all products (getAllProducts)", async () => {
+            (collections.products.find as jest.Mock).mockReturnValueOnce({
+                toArray: jest.fn().mockResolvedValueOnce([
+                    { _id: "428C084D44011B049F4A8130", name: "MockProd1" },
+                    { _id: "340C4A591459201DFFAB0375", name: "MockProd2" },
+                ]),
+            });
 
-            const response = await request(app).get("/products");
+            const res = await request(app).get("/products");
+            expect(res.status).toBe(200);
+            expect(res.body).toHaveLength(2);
 
-            expect(response.status).toBe(200);
-            expect(response.body).toHaveLength(2);
-            expect(response.body[0].name).toBe("Mock Prod 1");
-            expect(mockPrisma.product.findMany).toHaveBeenCalledTimes(1);
+            expect(collections.products.find).toHaveBeenCalledTimes(1);
+            expect(collections.products.find).toHaveBeenCalledWith({});
+        });
+    });
+
+    describe("GET /products (with query sortByPrice / isAvailable)", () => {
+        it("should call searchProducts when query is present", async () => {
+            (collections.products.find as jest.Mock).mockReturnValue({
+                sort: jest.fn().mockReturnValue({
+                    toArray: jest.fn().mockResolvedValue([
+                        {
+                            _id: "F3E13EF0DA3475A5B8C573A4",
+                            price: 9.99,
+                            isAvailable: true,
+                        },
+                    ]),
+                }),
+            });
+
+            const res = await request(app).get(
+                "/products?sortByPrice=asc&isAvailable=true",
+            );
+            expect(res.status).toBe(200);
+            expect(res.body).toHaveLength(1);
+
+            expect(collections.products.find).toHaveBeenCalledWith({
+                isAvailable: true,
+            });
         });
     });
 
     describe("GET /products/:productId", () => {
-        test("should return 200 if product is found", async () => {
-            mockPrisma.product.findFirst.mockResolvedValueOnce({
-                id: 123,
-                name: "Single Product",
-                price: 999,
+        it("should return a product if found (getProductById)", async () => {
+            (collections.products.findOne as jest.Mock).mockResolvedValueOnce({
+                _id: "AF5077ADF984FDEAAE82821D",
+                name: "Test Product",
             });
 
-            const response = await request(app).get("/products/123");
-
-            expect(response.status).toBe(200);
-            expect(response.body.id).toBe(123);
-            expect(mockPrisma.product.findFirst).toHaveBeenCalledWith({
-                where: { id: 123 },
+            const res = await request(app).get(
+                "/products/AF5077ADF984FDEAAE82821D",
+            );
+            expect(res.status).toBe(200);
+            expect(res.body._id).toBe("AF5077ADF984FDEAAE82821D");
+            expect(collections.products.findOne).toHaveBeenCalledWith({
+                _id: expect.any(ObjectId),
             });
         });
 
-        test("should return 404 if product is NOT found", async () => {
-            mockPrisma.product.findFirst.mockResolvedValueOnce(null);
+        it("should return 404 if not found", async () => {
+            (collections.products.findOne as jest.Mock).mockResolvedValueOnce(
+                null,
+            );
+            const res = await request(app).get("/products/doesnotexist");
+            expect(res.status).toBe(404);
+            expect(res.body.message).toMatch(/not found/i);
+        });
+    });
 
-            const response = await request(app).get("/products/999");
+    describe("GET /products/:productId/details", () => {
+        it("should call getProductWithRelations", async () => {
+            (collections.products.aggregate as jest.Mock).mockReturnValueOnce({
+                next: jest.fn().mockResolvedValueOnce({
+                    _id: "36C3705595DF15CB55A05FF7",
+                    name: "Detailed Product",
+                    reviews: [],
+                }),
+            });
 
-            expect(response.status).toBe(404);
-            expect(response.body.message).toMatch(/not found/i);
+            const res = await request(app).get(
+                "/products/36C3705595DF15CB55A05FF7/details",
+            );
+            expect(res.status).toBe(200);
+            expect(res.body._id).toBe("36C3705595DF15CB55A05FF7");
+            expect(collections.products.aggregate).toHaveBeenCalledTimes(1);
+        });
+
+        it("should 404 if no product found in aggregation", async () => {
+            (collections.products.aggregate as jest.Mock).mockReturnValueOnce({
+                next: jest.fn().mockResolvedValueOnce(null),
+            });
+
+            const res = await request(app).get("/products/p999/details");
+            expect(res.status).toBe(404);
+            expect(res.body.message).toMatch(/not found/i);
         });
     });
 
     describe("POST /products", () => {
-        test("should create a product and return 201", async () => {
-            mockPrisma.product.create.mockResolvedValueOnce({
-                id: 101,
-                name: "Newly Created Product",
-                categoryId: 3,
-                price: 10.99,
-                stockCount: 50,
-                brand: "Example Brand",
-                imageUrl: "example.jpg",
-                isAvailable: true,
-            });
+        it("should create a product", async () => {
+            (collections.products.insertOne as jest.Mock).mockResolvedValueOnce(
+                {
+                    insertedId: "A56E7E3D7E95F04DD606ED5D",
+                },
+            );
 
-            const response = await request(app).post("/products").send({
-                name: "Newly Created Product",
-                categoryId: "3",
-                description: "Something",
-                price: "10.99",
-                stockCount: "50",
-                brand: "Example Brand",
-                imageUrl: "example.jpg",
+            const res = await request(app).post("/products").send({
+                name: "New Mock Product",
+                category: "Accessories",
+                description: "Test Desc",
+                price: "19.99",
+                stockCount: "5",
+                brand: "BrandXYZ",
+                imageUrl: "some.jpg",
                 isAvailable: "true",
             });
 
-            expect(response.status).toBe(201);
-            expect(response.body.message).toMatch(/created succesfully/i);
-            expect(response.body.data.id).toBe(101);
-            expect(mockPrisma.product.create).toHaveBeenCalledTimes(1);
+            expect(res.status).toBe(201);
+            expect(res.body.data._id).toBe("A56E7E3D7E95F04DD606ED5D");
+            expect(res.body.data.name).toBe("New Mock Product");
+            expect(collections.products.insertOne).toHaveBeenCalledTimes(1);
+            expect(collections.products.insertOne).toHaveBeenCalledWith({
+                name: "New Mock Product",
+                category: "Accessories",
+                description: "Test Desc",
+                price: 19.99,
+                stockCount: 5,
+                brand: "BrandXYZ",
+                imageUrl: "some.jpg",
+                isAvailable: true,
+            });
         });
     });
 
     describe("PATCH /products/:productId", () => {
-        test("should update a product when valid fields are provided", async () => {
-            mockPrisma.product.update.mockResolvedValueOnce({
-                id: 999,
-                name: "Updated Product Name",
-                price: 22.99,
+        it("should update a product partially", async () => {
+            (
+                collections.products.findOneAndUpdate as jest.Mock
+            ).mockResolvedValueOnce({
+                value: {
+                    _id: "4B0504DBC343B94BD9554CF3",
+                    name: "Partially Updated Product",
+                    price: 49.99,
+                },
             });
 
-            const response = await request(app).patch("/products/999").send({
-                name: "Updated Product Name",
-                price: "22.99",
-            });
+            const res = await request(app)
+                .patch("/products/4B0504DBC343B94BD9554CF3")
+                .send({
+                    name: "Partially Updated Product",
+                    price: "49.99",
+                });
 
-            expect(response.status).toBe(200);
-            expect(response.body.data.name).toBe("Updated Product Name");
-            expect(mockPrisma.product.update).toHaveBeenCalledWith({
-                where: { id: 999 },
-                data: { name: "Updated Product Name", price: 22.99 },
-            });
+            expect(res.status).toBe(200);
+            expect(res.body.data.name).toBe("Partially Updated Product");
+            expect(collections.products.findOneAndUpdate).toHaveBeenCalledWith(
+                { _id: expect.any(ObjectId) },
+                { $set: { name: "Partially Updated Product", price: 49.99 } },
+                { returnDocument: "after" },
+            );
         });
 
-        test("should return 400 if no valid fields are provided", async () => {
-            const response = await request(app).patch("/products/999").send({});
-            expect(response.status).toBe(400);
-            expect(response.body.message).toMatch(/No valid fields provided/i);
-            expect(mockPrisma.product.update).not.toHaveBeenCalled();
+        it("should return 404 if product not found", async () => {
+            (
+                collections.products.findOneAndUpdate as jest.Mock
+            ).mockResolvedValueOnce({
+                value: null,
+            });
+
+            const res = await request(app)
+                .patch("/products/080662C1DC414837CEC1DF3A")
+                .send({ name: "Nope" });
+            expect(res.status).toBe(404);
+            expect(res.body.message).toMatch(/not found/i);
+        });
+
+        it("should return 400 if no fields given", async () => {
+            const res = await request(app)
+                .patch("/products/D4FA7767562D9EBC89D04DE3")
+                .send({});
+            expect(res.status).toBe(400);
+            expect(res.body.message).toMatch(/No valid fields provided/i);
+            expect(
+                collections.products.findOneAndUpdate,
+            ).not.toHaveBeenCalled();
         });
     });
 
     describe("DELETE /products/:productId", () => {
-        test("should delete a product if found", async () => {
-            mockPrisma.product.delete.mockResolvedValueOnce({
-                id: 12,
-                name: "To be deleted",
+        it("should delete product if found", async () => {
+            (
+                collections.products.findOneAndDelete as jest.Mock
+            ).mockResolvedValueOnce({
+                value: {
+                    _id: "97F7E8B05B0F749090DB1853",
+                    name: "To be deleted",
+                },
             });
 
-            const response = await request(app).delete("/products/12");
-            expect(response.status).toBe(200);
-            expect(response.body.message).toMatch(/successfully deleted/i);
-            expect(mockPrisma.product.delete).toHaveBeenCalledWith({
-                where: { id: 12 },
+            const res = await request(app).delete(
+                "/products/97F7E8B05B0F749090DB1853",
+            );
+            expect(res.status).toBe(200);
+            expect(res.body.message).toMatch(/successfully deleted/i);
+            expect(collections.products.findOneAndDelete).toHaveBeenCalledWith({
+                _id: expect.any(ObjectId),
             });
         });
 
-        test("should return 404 if product is not found", async () => {
-            mockPrisma.product.delete.mockRejectedValueOnce(
-                new Error("Record not found"),
-            );
+        it("should return 404 if product not found", async () => {
+            (
+                collections.products.findOneAndDelete as jest.Mock
+            ).mockResolvedValueOnce({
+                value: null,
+            });
 
-            const response = await request(app).delete("/products/999");
-            expect(response.status).toBe(404);
-            expect(response.body.message).toMatch(/not found/i);
+            const res = await request(app).delete(
+                "/products/366C5E4E2DD6CB892CBDFB99",
+            );
+            expect(res.status).toBe(404);
+            expect(res.body.message).toMatch(/not found/i);
         });
     });
 });

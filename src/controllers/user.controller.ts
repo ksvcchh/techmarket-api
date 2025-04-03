@@ -78,10 +78,14 @@ export async function partlyChangeUserController(
             });
         } else {
             const updatedUser = await partlyChangeUser(userId, updateData);
-            res.status(200).json({
-                message: "User successfully updated",
-                data: updatedUser,
-            });
+            if (!updatedUser) {
+                res.status(404).json({ message: "User not found" });
+            } else {
+                res.status(200).json({
+                    message: "User successfully updated",
+                    data: updatedUser,
+                });
+            }
         }
     } catch (error) {
         next(error);

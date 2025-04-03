@@ -1,121 +1,130 @@
-// import query from "../config/query";
-
-import { Prisma } from "@prisma/client";
-import prisma from "../config/prismaClient";
+import { ObjectId } from "mongodb";
+import { collections } from "../services/database.service";
 
 export interface Product {
-    id?: string;
+    _id?: ObjectId;
     name: string;
-    categoryId: string;
+    category: string;
     description: string;
     price: number;
     stockCount: number;
     brand: string;
     imageUrl: string;
     isAvailable: boolean;
-    createdAt?: string;
 }
 
-export async function getAllProducts() {
-    const products = await prisma.product.findMany();
+export async function getAllProducts(): Promise<Product[]> {
+    if (!collections.products) throw new Error("products collection not found");
+    const productsCursor = collections.products.find({});
+    const products = (await productsCursor.toArray()) as Product[];
     return products;
 }
 
-export async function getProductById(id: string) {
-    const product = await prisma.product.findFirst({
-        where: { id: parseInt(id) },
-    });
+export async function getProductById(id: string): Promise<Product | null> {
+    if (!collections.products) throw new Error("products collection not found");
+
+    if (!ObjectId.isValid(id)) {
+        return null;
+    }
+
+    const product = (await collections.products.findOne({
+        _id: new ObjectId(id),
+    })) as Product | null;
     return product;
 }
 
 export async function createProduct(
-    product: Omit<Product, "id" | "createdAt">,
-) {
-    const {
-        name,
-        categoryId,
-        description,
-        price,
-        stockCount,
-        brand,
-        imageUrl,
-        isAvailable,
-    } = product;
+    productData: Omit<Product, "_id">,
+): Promise<Product> {
+    if (!collections.products) throw new Error("products collection not found");
 
-    const result = await prisma.product.create({
-        data: {
-            name: name,
-            categoryId: parseInt(categoryId),
-            description: description,
-            price: price,
-            stockCount: stockCount,
-            brand: brand,
-            imageUrl: imageUrl,
-            isAvailable: isAvailable,
-        },
-    });
-
-    return result;
+    const result = await collections.products.insertOne(productData);
+    return {
+        _id: result.insertedId,
+        ...productData,
+    };
 }
 
 export async function updateProductPartly(
     id: string,
-    fields: Partial<Omit<Prisma.ProductUpdateInput, "id" | "createdAt">>,
-) {
-    if (Object.keys(fields).length === 0) {
-        throw new Error("No fields provided for update");
-    } else {
-        const result = prisma.product.update({
-            where: {
-                id: parseInt(id),
-            },
-            data: fields,
-        });
-        return result;
+    updateData: Partial<Omit<Product, "_id">>,
+): Promise<Product | null> {
+    if (!collections.products) throw new Error("products collection not found");
+
+    if (!ObjectId.isValid(id)) {
+        return null;
     }
+
+    const result = await collections.products.findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        { $set: updateData },
+        { returnDocument: "after" },
+    );
+
+    if (!result || !result.value) {
+        return null;
+    }
+
+    return result.value as Product;
 }
 
-export async function deleteProduct(id: string) {
-    const result = await prisma.product.delete({
-        where: {
-            id: parseInt(id),
-        },
+export async function deleteProduct(id: string): Promise<Product | null> {
+    if (!collections.products) throw new Error("products collection not found");
+
+    if (!ObjectId.isValid(id)) {
+        return null;
+    }
+
+    const result = await collections.products.findOneAndDelete({
+        _id: new ObjectId(id),
     });
 
-    return result;
+    if (!result || !result.value) {
+        return null;
+    }
+    return result.value as Product;
 }
 
 export async function searchProducts(criteria: {
     sortByPrice?: "asc" | "desc";
     isAvailable?: boolean;
-}) {
-    const query: Prisma.ProductFindManyArgs = {};
+}): Promise<Product[]> {
+    if (!collections.products) throw new Error("products collection not found");
 
-    if (criteria.isAvailable !== undefined) {
-        query.where = {
-            isAvailable: criteria.isAvailable,
-        };
+    const filter: any = {};
+
+    if (typeof criteria.isAvailable === "boolean") {
+        filter.isAvailable = criteria.isAvailable;
     }
 
+    let sortOption: any = {};
     if (criteria.sortByPrice) {
-        query.orderBy = {
-            price: criteria.sortByPrice,
-        };
+        sortOption = { price: criteria.sortByPrice === "asc" ? 1 : -1 };
     }
 
-    const result = await prisma.product.findMany(query);
-    return result;
+    const productsCursor = collections.products.find(filter).sort(sortOption);
+    const products = (await productsCursor.toArray()) as Product[];
+    return products;
 }
 
-export async function getProductWithRelations(id: string) {
-    const product = await prisma.product.findUnique({
-        where: { id: parseInt(id) },
-        include: {
-            category: true,
-            reviews: {
-                include: { user: true },
+export async function getProductWithRelations(id: string): Promise<any | null> {
+    if (!collections.products) throw new Error("products collection not found");
+
+    if (!ObjectId.isValid(id)) return null;
+
+    const aggCursor = collections.products.aggregate([
+        { $match: { _id: new ObjectId(id) } },
+        {
+            $lookup: {
+                from: "reviews",
+                localField: "_id",
+                foreignField: "productId",
+                as: "reviews",
             },
         },
-    });
-    return product;
+    ]);
+
+    const result = await aggCursor.next();
+
+    return result || null;
 }
